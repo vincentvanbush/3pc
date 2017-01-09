@@ -13,5 +13,7 @@ case object Abort extends Message
 //case object PrepareOk extends Message
 case object Ack extends Message
 
-case class InitTimeout(forMsg: Message) extends Message
+case class InitTimeout(forMsg: Message, duration: Int = 5000) extends Message
 case class Timeout(forMsg: Message) extends Message
+
+case object Begin extends Message

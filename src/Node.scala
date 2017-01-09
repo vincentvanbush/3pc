@@ -1,11 +1,11 @@
-import akka.actor.{Actor, ActorRef, Props}
+import akka.actor.{Actor, ActorRef, Props, Stash}
 
 import scala.util.Random
 
 /**
   * Created by buszek on 07.01.17.
   */
-class Node extends Actor {
+class Node extends Actor with Stash {
   var nodes: List[ActorRef] = null
   var id: Int = -1
 
@@ -25,12 +25,17 @@ class Node extends Actor {
         context.become(coordinatorIdle)
       } else {
         context.become(cohortIdle)
+        self ! Begin // See notes in cohortIdle receiver for Begin
 
         // One cohort starts the procedure
         if (id == 1) {
           coordinator ! CommitReq
         }
       }
+    }
+
+    case _ => { // Stash messages if they come too early.
+      stash()
     }
   }
 
@@ -40,7 +45,7 @@ class Node extends Actor {
     case CommitReq => {
       println(s"${Console.BLUE}Transaction starts${Console.BLUE}")
       cohorts.foreach(cohort => cohort ! CommitReq)
-      context.actorOf(Props[Timekeeper]) ! InitTimeout(AgreeReq)
+      context.actorOf(Props[Timekeeper]) ! InitTimeout(AgreeReq, 4000)
       context.become(coordinatorWaitForCohortAgree)
     }
   }
@@ -54,7 +59,7 @@ class Node extends Actor {
         cohortCounter = 0
         println(s"${Console.YELLOW}Transaction prepared - all cohorts sent AGREE_REQ${Console.RESET}")
         cohorts.foreach(cohort => cohort ! Prepare)
-        context.actorOf(Props[Timekeeper]) ! InitTimeout(Ack)
+        context.actorOf(Props[Timekeeper]) ! InitTimeout(Ack, 5000)
         context.become(coordinatorWaitForCohortAck)
       }
     }
@@ -98,16 +103,22 @@ class Node extends Actor {
   // Cohort states
 
   def cohortIdle: Receive = {
+    case Begin => { // If messages had come too early, let's unstash them
+      unstashAll()
+    }
+
     case CommitReq => {
       if (Random.nextInt(30) < 4) { // abort
-        println(s"Cohort $id: transaction aborted (answering CommitReq with Abort)")
+        println(s"${Console.RED_B}${Console.BLACK}Cohort $id: transaction aborted (answering CommitReq with Abort)${Console.RESET}")
         sender ! Abort
         context.become(cohortIdle)
+      } else if (Random.nextInt(30) < 4) { // timeout
+        println(s"${Console.BLUE_B}${Console.BLACK}Cohort $id: timing out after on AgreeReq${Console.RESET}")
       } else { // agree
         println(s"Cohort $id: transaction agreed (answering CommitReq with AgreeReq)")
         sender ! AgreeReq
         context.become(cohortWaitForCoordinatorPrepare)
-        context.actorOf(Props[Timekeeper]) ! InitTimeout(Prepare)
+        context.actorOf(Props[Timekeeper]) ! InitTimeout(Prepare, 6000)
       }
     }
   }
@@ -117,16 +128,16 @@ class Node extends Actor {
       println(s"Cohort $id: transaction prepared")
       sender ! Ack
       context.become(cohortWaitForCoordinatorCommit)
-      context.actorOf(Props[Timekeeper]) ! InitTimeout(Commit)
+      context.actorOf(Props[Timekeeper]) ! InitTimeout(Commit, 7000)
     }
 
     case Timeout(Prepare) => {
-      println(s"Cohort $id: transaction aborted (expected Prepare, got Timeout)")
+      println(s"${Console.RED_B}${Console.BLACK}Cohort $id: transaction aborted (expected Prepare, got Timeout)${Console.RESET}")
       context.become(cohortIdle)
     }
 
     case Abort => {
-      println(s"Cohort $id: transaction aborted (expected Prepare, got Abort)")
+      println(s"${Console.RED_B}${Console.BLACK}Cohort $id: transaction aborted (expected Prepare, got Abort)${Console.RESET}")
       context.become(cohortIdle)
     }
   }
@@ -143,7 +154,7 @@ class Node extends Actor {
     }
 
     case Abort => {
-      println(s"Cohort $id: transaction aborted (expected Commit, got Abort)")
+      println(s"${Console.RED_B}${Console.BLACK}Cohort $id: transaction aborted (expected Commit, got Abort)${Console.RESET}")
       context.become(cohortIdle)
     }
   }

@@ -7,9 +7,9 @@ class Timekeeper extends Actor {
   var forMessage: Message = null
 
   def receive = {
-    case InitTimeout(forMsg) => {
+    case InitTimeout(forMsg, duration) => {
       forMessage = forMsg
-      Thread.sleep(5000)
+      Thread.sleep(duration)
       sender ! Timeout(forMessage)
     }
   }
