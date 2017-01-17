@@ -36,8 +36,12 @@ object Main extends App {
       Await.result(system.actorSelection(s"akka.tcp://3pc@$ip:$p/user/Node").resolveOne(10 seconds), 10 seconds)
     })
 
-    (nodes, (0 until nodes.size)).zipped.toList.map {
-      case (node, index) => node ! Initialize(index, nodes)
+    while (true) {
+      println("Initializing another one...");
+      (nodes, (0 until nodes.size)).zipped.toList.map {
+        case (node, index) => node ! Initialize(index, nodes)
+      }
+      scala.io.StdIn.readLine()
     }
   }
 

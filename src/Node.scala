@@ -16,22 +16,26 @@ class Node extends Actor with Stash {
   def coordinator = nodes.head
   def cohorts = nodes.tail
 
+  def init(index: Int, nodeList: List[ActorRef]) = {
+    id = index
+    nodes = nodeList
+
+    if (self == coordinator) {
+      context.become(coordinatorIdle)
+    } else {
+      context.become(cohortIdle)
+      self ! Begin // See notes in cohortIdle receiver for Begin
+
+      // One cohort starts the procedure
+      if (id == 1) {
+        coordinator ! CommitReq
+      }
+    }
+  }
+
   def receive = {
     case Initialize(index, nodeList) => {
-      id = index
-      nodes = nodeList
-
-      if (self == coordinator) {
-        context.become(coordinatorIdle)
-      } else {
-        context.become(cohortIdle)
-        self ! Begin // See notes in cohortIdle receiver for Begin
-
-        // One cohort starts the procedure
-        if (id == 1) {
-          coordinator ! CommitReq
-        }
-      }
+      init(index, nodeList)
     }
 
     case _ => { // Stash messages if they come too early.
@@ -103,6 +107,10 @@ class Node extends Actor with Stash {
   // Cohort states
 
   def cohortIdle: Receive = {
+    case Initialize(index, nodeList) => {
+      init(index, nodeList)
+    }
+
     case Begin => { // If messages had come too early, let's unstash them
       unstashAll()
     }
